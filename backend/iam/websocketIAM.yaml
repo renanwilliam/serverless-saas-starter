@@ -4,3 +4,6 @@ InvokePermission:
     - execute-api:ManageConnections
     - execute-api:Invoke
   Resource:
+    Fn::Sub:
+      - "arn:aws:execute-api:${Region}:${AccountId}:${WebSocketId}/*"
+      - { Region: !Ref AWS::Region, AccountId: !Ref AWS::AccountId, WebSocketId: !Ref WebsocketsApi }

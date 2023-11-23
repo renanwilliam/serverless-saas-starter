@@ -1,13 +1,7 @@
-Parameters:
-  BucketName:
-    Type: String
-    Description: 'Bucket name'
-    Default: ${self:custom.BUCKET_NAME}
 Resources:
   S3Bucket:
     Type: 'AWS::S3::Bucket'
     Properties:
-      BucketName: !Ref BucketName
       AccessControl: "Private"
       CorsConfiguration:
         CorsRules:
@@ -23,6 +17,8 @@ Resources:
             Prefix: tmp/
             Status: Enabled
             ExpirationInDays: 1
+      PublicAccessBlockConfiguration:
+        BlockPublicPolicy: false
   S3BucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:

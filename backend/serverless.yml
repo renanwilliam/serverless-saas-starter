@@ -9,7 +9,6 @@ plugins:
   - serverless-lift
   - serverless-esbuild
   - serverless-certificate-creator
-  - serverless-domain-manager
   - serverless-iam-roles-per-function
 
 provider:
@@ -53,5 +52,121 @@ constructs:
         - ${file(iam/applicationTableIAM.yaml):AllPermissions}
         - ${file(iam/websocketIAM.yaml):InvokePermission}
 
-custom:
-  BUCKET_NAME: ${env:APP_NAME}-${self:provider.stage}-generic-bucket
+functions:
+  idTokenAuthorizer:
+    handler: src/handlers/user/authorizer.handler
+  cognitoPreSign:
+    handler: src/handlers/user/preSignUpUserPoolTrigger.handler
+    iamRoleStatementsInherit: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - cognito-idp:AdminAddUserToGroup
+          - cognito-idp:AdminUpdateUserAttributes
+          - cognito-idp:ListUsers
+          - cognito-idp:AdminLinkProviderForUser
+          - cognito-idp:AdminCreateUser
+          - cognito-idp:AdminSetUserPassword
+        Resource:
+          - !GetAtt UserPool.Arn
+    events:
+      - cognitoUserPool:
+          pool: ${self:provider.stage}-${env:COGNITO_AUTH_NAME}-user-pool
+          trigger: PreSignUp
+          existing: true
+          forceDeploy: true
+  userStats:
+    handler: src/handlers/user/stats.handler
+    events:
+      - http:
+          method: get
+          path: '/rest/v1/user/stats'
+          authorizer:
+            name: CognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: !GetAtt UserPool.Arn
+  userWebsocketRequests:
+    handler: src/handlers/user/websocket.handler
+    events:
+      - websocket:
+          route: $connect
+          authorizer:
+            name: idTokenAuthorizer
+            identitySource:
+              - 'route.request.querystring.Auth'
+      - websocket:
+          route: $disconnect
+      - websocket:
+          # Handles all other requests
+          route: $default
+  createPurchase:
+    handler: src/handlers/purchase/create.handler
+    events:
+      - http:
+          method: post
+          path: '/rest/v1/purchases'
+          authorizer:
+            name: CognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: !GetAtt UserPool.Arn
+  createPurchaseStripeWebhook:
+    handler: src/handlers/purchase/createStripeWebhook.handler
+    iamRoleStatementsInherit: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+          - dynamodb:PutItem
+          - dynamodb:DeleteItem
+          - dynamodb:UpdateItem
+          - dynamodb:DescribeTable
+        Resource:
+          - !GetAtt ApplicationTable.Arn
+          - !Join [ '', [ !GetAtt ApplicationTable.Arn, "/*" ] ]
+    environment:
+      STRIPE_INTEGRATION_WEBHOOK_SECRET: ${env:STRIPE_INTEGRATION_WEBHOOK_SECRET}
+    events:
+      - http:
+          method: post
+          path: '/rest/v1/purchases/webhook/stripe'
+  updatePurchase:
+    handler: src/handlers/purchase/update.handler
+    events:
+      - http:
+          method: put
+          path: '/rest/v1/purchases/{purchaseId}'
+          authorizer:
+            name: CognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: !GetAtt UserPool.Arn
+  deletePurchase:
+    handler: src/handlers/purchase/delete.handler
+    events:
+      - http:
+          method: delete
+          path: '/rest/v1/purchases/{purchaseId}'
+          authorizer:
+            name: CognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: !GetAtt UserPool.Arn
+  findOnePurchase:
+    handler: src/handlers/purchase/findOne.handler
+    events:
+      - http:
+          method: get
+          path: '/rest/v1/purchases/{purchaseId}'
+          authorizer:
+            name: CognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: !GetAtt UserPool.Arn
+  findAllPurchases:
+    handler: src/handlers/purchase/findAll.handler
+    events:
+      - http:
+          method: get
+          path: '/rest/v1/purchases'
+          authorizer:
+            name: CognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: !GetAtt UserPool.Arn
