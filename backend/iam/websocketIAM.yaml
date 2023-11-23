@@ -1,0 +1,6 @@
+InvokePermission:
+  Effect: Allow
+  Action:
+    - execute-api:ManageConnections
+    - execute-api:Invoke
+  Resource:

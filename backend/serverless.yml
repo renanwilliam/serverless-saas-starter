@@ -1,0 +1,57 @@
+service: ${env:APP_NAME}
+frameworkVersion: '3'
+useDotenv: true
+
+package:
+  individually: true
+
+plugins:
+  - serverless-lift
+  - serverless-esbuild
+  - serverless-certificate-creator
+  - serverless-domain-manager
+  - serverless-iam-roles-per-function
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  stage: ${opt:stage, 'dev'}
+  region: us-east-1
+  logRetentionInDays: 90
+  environment:
+    FRONTEND_URL: ${env:FRONTEND_URL}
+    APPLICATION_TABLE_NAME:
+      Ref: ApplicationTable
+    COGNITO_USER_POOL_ID:
+      Ref: UserPool
+    COGNITO_IDENTITY_POOL_ID:
+      Ref: IdentityPool
+    STRIPE_API_KEY: ${env:STRIPE_API_KEY}
+    STRIPE_PRICE_SINGLE_PURCHASE: ${env:STRIPE_PRICE_SINGLE_PURCHASE}
+    STRIPE_PRICE_SUBSCRIPTION_PURCHASE: ${env:STRIPE_PRICE_SUBSCRIPTION_PURCHASE}
+    QUEUE_URL: ${construct:purchaseAsyncQueue.queueUrl}
+
+resources:
+  - ${file(resources/s3-bucket.yaml)}
+  - ${file(resources/cognito.yaml)}
+  - ${file(resources/dynamodb.yaml)}
+
+#  uncomment if you plan to use VPC
+#  - ${file(resources/vpc-main.yaml)}
+#  - ${file(resources/vpc-routes.yaml)}
+#  - ${file(resources/vpc-nat-gateway.yaml)}
+
+constructs:
+  purchaseAsyncQueue:
+    type: queue
+    worker:
+      handler: src/handlers/purchase/processPurchaseQueue.handler
+      iamRoleStatementsInherit: true
+      timeout: 900
+      memory: 512
+      iamRoleStatements:
+        - ${file(iam/applicationTableIAM.yaml):AllPermissions}
+        - ${file(iam/websocketIAM.yaml):InvokePermission}
+
+custom:
+  BUCKET_NAME: ${env:APP_NAME}-${self:provider.stage}-generic-bucket

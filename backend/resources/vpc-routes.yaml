@@ -1,0 +1,112 @@
+Resources:
+  RouteTablePublic:
+    DependsOn: VpcInternetGatewayAttachment
+    Type: AWS::EC2::RouteTable
+    Condition: CreateVPCResources
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: "Name"
+          Value: "${env:APP_NAME}-${self:provider.stage}-public-routes"
+
+  RoutePublic:
+    Type: AWS::EC2::Route
+    Condition: CreateVPCResources
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTablePublic
+
+  RoutePublicTableAssociationSubnetA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref PublicSubnetA
+
+  RoutePublicTableAssociationSubnetB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref PublicSubnetB
+
+  RoutePublicTableAssociationSubnetC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref PublicSubnetC
+
+  RoutePublicTableAssociationSubnetD:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref PublicSubnetD
+
+  RoutePublicTableAssociationSubnetE:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref PublicSubnetE
+
+  RoutePublicTableAssociationSubnetF:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref PublicSubnetF
+
+  RouteTablePrivate:
+    DependsOn: VpcInternetGatewayAttachment
+    Type: AWS::EC2::RouteTable
+    Condition: CreateVPCResources
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: "Name"
+          Value: "${env:APP_NAME}-${self:provider.stage}-private-routes"
+
+  RoutePrivateTableAssociationSubnetA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetA
+
+  RoutePrivateTableAssociationSubnetB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetB
+
+  RoutePrivateTableAssociationSubnetC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetC
+
+  RoutePrivateTableAssociationSubnetD:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetD
+
+  RoutePrivateTableAssociationSubnetE:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetE
+
+  RoutePrivateTableAssociationSubnetF:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVPCResources
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetF

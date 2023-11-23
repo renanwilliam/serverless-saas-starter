@@ -1,0 +1,99 @@
+# https://fck-nat.dev
+Resources:
+  FckNatInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      GroupSet:
+        - Fn::GetAtt:
+            - NatSecurityGroup
+            - GroupId
+      SourceDestCheck: false
+
+    FckNatAsgInstanceProfile:
+      Type: AWS::IAM::InstanceProfile
+      Properties:
+        Roles:
+          - Ref: NatRole
+
+    FckNatAsgLaunchConfig:
+      Type: AWS::AutoScaling::LaunchConfiguration
+      Properties:
+        ImageId: ami-05b6d5a2e26f13c93
+        InstanceType: t4g.nano
+        IamInstanceProfile:
+          Ref: FckNatAsgInstanceProfile
+        SecurityGroups:
+          - Fn::GetAtt:
+              - NatSecurityGroup
+              - GroupId
+        UserData:
+          Fn::Base64:
+            Fn::Join:
+              - ""
+              - - |-
+                  #!/bin/bash
+                  echo "eni_id=
+                - Ref: FckNatInterface
+                - |-
+                  " >> /etc/fck-nat.conf
+                  service fck-nat restart
+      DependsOn:
+        - NatRole
+
+    FckNatAsg:
+      Type: AWS::AutoScaling::AutoScalingGroup
+      Properties:
+        MaxSize: "1"
+        MinSize: "1"
+        DesiredCapacity: "1"
+        LaunchConfigurationName:
+          Ref: FckNatAsgLaunchConfig
+        VPCZoneIdentifier:
+          - !Ref PrivateSubnetA
+      UpdatePolicy:
+        AutoScalingScheduledAction:
+          IgnoreUnmodifiedGroupSizeProperties: true
+
+    NatSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Security Group for NAT
+        SecurityGroupIngress:
+          - CidrIp: ${env:VPC_CIDR_PREFIX}.0.0/16
+            IpProtocol: "-1"
+        SecurityGroupEgress:
+          - CidrIp: 0.0.0.0/0
+            Description: Allow all outbound traffic by default
+            IpProtocol: "-1"
+        VpcId: !Ref VPC
+
+    NatRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Statement:
+            - Action: sts:AssumeRole
+              Effect: Allow
+              Principal:
+                Service: ec2.amazonaws.com
+          Version: "2012-10-17"
+        Policies:
+          - PolicyDocument:
+              Statement:
+                - Action:
+                    - ec2:AttachNetworkInterface
+                    - ec2:ModifyNetworkInterfaceAttribute
+                  Effect: Allow
+                  Resource: "*"
+              Version: "2012-10-17"
+            PolicyName: attachNatEniPolicy
+          - PolicyDocument:
+              Statement:
+                - Action:
+                    - ec2:AssociateAddress
+                    - ec2:DisassociateAddress
+                  Effect: Allow
+                  Resource: "*"
+              Version: "2012-10-17"
+            PolicyName: attachNatEniPolicy

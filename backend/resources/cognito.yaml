@@ -1,0 +1,321 @@
+#Description: Cognito Stack
+Parameters:
+  AuthName:
+    Type: String
+    Description: "Unique Auth Name for Cognito Resources"
+    Default: ${self:provider.stage}-${env:COGNITO_AUTH_NAME}
+  SenderArn:
+    Type: String
+    Description: "SES Sender Identity ARN"
+    Default: ${env:SES_IDENTITY_ARN}
+
+Resources:
+  # Creates a role that allows Cognito to send SNS messages
+  SNSRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "cognito-idp.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: "CognitoSNSPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "sns:publish"
+                Resource: "*"
+
+  # Creates a user pool in cognito for your app to auth against
+  # This example requires MFA and validates the phone number to use as MFA
+  # Other fields can be added to the schema
+  UserPool:
+    Type: "AWS::Cognito::UserPool"
+    Properties:
+      UserPoolName: !Sub ${AuthName}-user-pool
+      AutoVerifiedAttributes:
+        - email
+      MfaConfiguration: "OPTIONAL"
+      EnabledMfas:
+        - SMS_MFA
+        - SOFTWARE_TOKEN_MFA
+      EmailConfiguration:
+        EmailSendingAccount: 'DEVELOPER'
+        From: noreply@${env:SES_DOMAIN}
+        SourceArn: !Sub ${SenderArn}
+      SmsConfiguration:
+        ExternalId: !Sub ${AuthName}-external
+        SnsCallerArn: !GetAtt SNSRole.Arn
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: phone_number
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: picture
+          AttributeDataType: String
+          Mutable: true
+        - Name: locale
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+      #More standard attributes available on:
+      #https://docs.aws.amazon.com/pt_br/cognito/latest/developerguide/user-pool-settings-attributes.html
+
+  UserPoolDomainCertificate:
+    Type: "AWS::CertificateManager::Certificate"
+    Properties:
+      DomainName: ${env:COGNITO_CUSTOM_DOMAIN}
+      ValidationMethod: DNS
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    DependsOn: UserPoolDomainCertificate
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: ${env:COGNITO_CUSTOM_DOMAIN}
+      CustomDomainConfig:
+        CertificateArn: !Ref UserPoolDomainCertificate
+
+  UserPoolDNS:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: ${env:ROUTE53_HOSTEDZONE_DOMAIN}.
+      Name: ${env:COGNITO_CUSTOM_DOMAIN}
+      Type: A
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt UserPoolDomain.CloudFrontDistribution
+        EvaluateTargetHealth: false
+
+  # Creates a User Pool Client to be used by the identity pool
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    #    Uncomment if you plan to use Facebook and/or Google as identity providers
+    #    DependsOn:
+    #      - UserPoolIdentityGoogleProvider
+    #      - UserPoolIdentityFacebookProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub ${AuthName}-client
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_CUSTOM_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      CallbackURLs:
+        - ${env:FRONTEND_URL}
+      LogoutURLs:
+        - ${env:FRONTEND_URL}
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - profile
+        - aws.cognito.signin.user.admin
+      SupportedIdentityProviders:
+        - COGNITO
+      #    Uncomment if you plan to use Facebook and/or Google as identity providers
+      #        - Google
+      #        - Facebook
+      IdTokenValidity: 1
+      AccessTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: days
+        IdToken: days
+        RefreshToken: days
+
+  UserPoolUICustomization:
+    Type: AWS::Cognito::UserPoolUICustomizationAttachment
+    DependsOn: UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientId: ALL
+      CSS: ".background-customizable {
+        box-shadow: 0px 2px 20px rgba(0, 0, 0, 20%), 0 0 0 10000px #eee;
+      }
+      
+      .banner-customizable {
+        padding: 10px 0px 10px 0px;
+        background-color: white;
+      }
+      
+      .submitButton-customizable {
+        font-size: 14px;
+        font-weight: bold;
+        margin: 20px 0px 10px 0px;
+        height: 40px;
+        width: 100%;
+        color: #fff;
+        background-color: #0071bc;
+      }"
+
+  #  Uncomment to use Google as Identity Provider
+  #  UserPoolIdentityGoogleProvider:
+  #    Type: AWS::Cognito::UserPoolIdentityProvider
+  #    Properties:
+  #      UserPoolId: !Ref UserPool
+  #      ProviderName: "Google"
+  #      ProviderDetails:
+  #        client_id: ${env:COGNITO_GOOGLE_CLIENT_ID}
+  #        client_secret: ${env:COGNITO_GOOGLE_SECRET}
+  #        authorize_scopes: "profile email openid"
+  #      ProviderType: "Google"
+  #      AttributeMapping:
+  #        email: "email"
+  #        name: "name"
+  #        picture: "picture"
+
+  #  Uncomment to use Facebook as Identity Provider
+  #  UserPoolIdentityFacebookProvider:
+  #    Type: AWS::Cognito::UserPoolIdentityProvider
+  #    Properties:
+  #      UserPoolId: !Ref UserPool
+  #      ProviderName: "Facebook"
+  #      ProviderDetails:
+  #        api_version: v17.0
+  #        client_id: ${env:COGNITO_FACEBOOK_APP_ID}
+  #        client_secret: ${env:COGNITO_FACEBOOK_SECRET}
+  #        authorize_scopes: "public_profile,email"
+  #      ProviderType: "Facebook"
+  #      AttributeMapping:
+  #        email: "email"
+  #        name: "name"
+
+  # Creates a federated Identity Pool
+  IdentityPool:
+    Type: "AWS::Cognito::IdentityPool"
+    Properties:
+      IdentityPoolName: !Sub ${AuthName}Identity
+      AllowUnauthenticatedIdentities: true
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+
+  # Create a role for unauthorized acces to AWS resources. Very limited access. Only allows users in the previously created Identity Pool
+  CognitoUnAuthorizedRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Federated: "cognito-identity.amazonaws.com"
+            Action:
+              - "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": unauthenticated
+      Policies:
+        - PolicyName: "${env:APP_NAME}CognitoUnauthorizedPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "mobileanalytics:PutEvents"
+                  - "cognito-sync:*"
+                Resource: "*"
+
+  # Create a role for authorized acces to AWS resources. Control what your user can access. This example only allows Lambda invokation
+  # Only allows users in the previously created Identity Pool
+  CognitoAuthorizedRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Federated: "cognito-identity.amazonaws.com"
+            Action:
+              - "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref IdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": authenticated
+      Policies:
+        - PolicyName: "${env:APP_NAME}CognitoAuthorizedPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "mobileanalytics:PutEvents"
+                  - "cognito-sync:*"
+                  - "cognito-identity:*"
+                Resource: "*"
+              - Effect: "Allow"
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+              - Effect: "Allow"
+                Action:
+                  - "dynamodb:GetItem"
+                  - "dynamodb:BatchGetItem"
+                  - "dynamodb:PutItem"
+                  - "dynamodb:Query"
+                  - "dynamodb:UpdateItem"
+                  - "dynamodb:DeleteItem"
+                  - "dynamodb:BatchWriteItem"
+                  - "dynamodb:DescribeTable"
+                Resource:
+                  - !GetAtt ApplicationTable.Arn
+                  - !Join [ '', [ !GetAtt ApplicationTable.Arn, "/*" ] ]
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys:
+                      - !Join [ '', [ '$', '{cognito-identity.amazonaws.com:sub}', '*' ] ]
+
+
+  # Assigns the roles to the Identity Pool
+  IdentityPoolRoleMapping:
+    Type: "AWS::Cognito::IdentityPoolRoleAttachment"
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt CognitoAuthorizedRole.Arn
+        unauthenticated: !GetAtt CognitoUnAuthorizedRole.Arn
+
+Outputs:
+  UserPoolId:
+    Value: !Ref UserPool
+    Export:
+      Name: ${self:service}-${self:provider.stage}-UserPoolId
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+    Export:
+      Name: ${self:service}-${self:provider.stage}-UserPoolClientId
+  IdentityPoolId:
+    Value: !Ref IdentityPool
+    Export:
+      Name: ${self:service}-${self:provider.stage}-IdentityPoolId
+  UserPoolClientIdHostedUi:
+    Value: !Ref UserPoolClient
+    Description: The app client for Hosted UI
+  HostedUIURL:
+    Value: !Sub https://${env:COGNITO_CUSTOM_DOMAIN}/login?client_id=${UserPoolClient}&response_type=code&scope=email+openid+phone+profile+aws.cognito.signin.user.admin&redirect_uri=${env:FRONTEND_URL}
+    Description: The hosted UI URL

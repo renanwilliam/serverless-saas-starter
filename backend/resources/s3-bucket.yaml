@@ -1,0 +1,42 @@
+Parameters:
+  BucketName:
+    Type: String
+    Description: 'Bucket name'
+    Default: ${self:custom.BUCKET_NAME}
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref BucketName
+      AccessControl: "Private"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - PUT
+            AllowedOrigins:
+              - '*'
+      LifecycleConfiguration:
+        Rules:
+          - Id: tmp
+            Prefix: tmp/
+            Status: Enabled
+            ExpirationInDays: 1
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Id: PUBLIC_PERMISSIONS
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - 's3:GetObject'
+            Effect: Allow
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref S3Bucket
+                - /public/*
+            Principal: '*'
